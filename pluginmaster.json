@@ -10,8 +10,8 @@
             "emotegrid"
         ],
         "InternalName": "EmoteGrid",
-        "AssemblyVersion": "1.0.0.0",
-        "TestingAssemblyVersion": "1.0.0.0",
+        "AssemblyVersion": "1.0.0.1",
+        "TestingAssemblyVersion": "1.0.0.1",
         "RepoUrl": "https://github.com/Etupa/EmoteGrid",
         "ApplicableVersion": "any",
         "DalamudApiLevel": 15,
