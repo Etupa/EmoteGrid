@@ -16,9 +16,6 @@ Simply add the custom repo to Dalamud
 ## Usage
 Type `/emotegrid` in your chat window to open or close the EmoteGrid interface.
 
-## Installation
-Currently, the plugin is in development. You can build it from source or wait for it to be added to a custom plugin repository.
-
 ### Building from Source
 This plugin targets Dalamud API v15 and requires the `.NET 10.0 Preview SDK`.
 1. Clone this repository.
