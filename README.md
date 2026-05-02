@@ -4,7 +4,7 @@ EmoteGrid is a standalone Dalamud plugin for Final Fantasy XIV that provides a s
 
 ### Dalamud Custom Repo
 Simply add the custom repo to Dalamud
-`https://raw.githubusercontent.com/Etupa/EmoteGrid/master/pluginmaster.json`
+```https://raw.githubusercontent.com/Etupa/EmoteGrid/master/pluginmaster.json```
 
 ## Features
 - **Dynamic Grid Interface:** Displays all of your owned emotes in an aesthetically pleasing grid format. The icons flow naturally as you resize the window.
