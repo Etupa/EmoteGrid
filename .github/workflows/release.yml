@@ -28,14 +28,17 @@ jobs:
         run: dotnet restore EmoteGrid/EmoteGrid.csproj
 
       - name: Build Project
-        run: dotnet build --configuration Release EmoteGrid/EmoteGrid.csproj -p:AssemblyVersion=${{ github.ref_name }}
+        run: dotnet build --configuration Release EmoteGrid/EmoteGrid.csproj -p:Version=${{ github.ref_name }} -p:AssemblyVersion=${{ github.ref_name }} -p:FileVersion=${{ github.ref_name }} -p:PackageVersion=${{ github.ref_name }} -p:InformationalVersion=${{ github.ref_name }} --output .\build
+
+      - name: Zip Plugin
+        run: Compress-Archive -Path .\build\* -DestinationPath .\build\latest.zip
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
-          files: EmoteGrid/bin/Release/EmoteGrid/latest.zip
+          files: ./build/latest.zip
           draft: false
           prerelease: false
         env:
