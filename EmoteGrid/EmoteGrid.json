@@ -1,3 +1,21 @@
 {
+  "Author": "Etupa",
+  "Name": "EmoteGrid",
+  "InternalName": "EmoteGrid",
+  "Description": "A standalone plugin providing a scalable ImGui grid for emotes.",
+  "Punchline": "Custom ImGui Emote Grid",
+  "Tags": [
+    "ui",
+    "emotes",
+    "emotegrid"
+  ],
+  "ApplicableVersion": "any",
+  "DalamudApiLevel": 15,
+  "LoadRequiredState": 0,
+  "LoadSync": false,
+  "CanUnloadAsync": false,
+  "LoadPriority": 0,
+  "IsTestingExclusive": false,
+  "AcceptsFeedback": false,
   "IconUrl": "https://raw.githubusercontent.com/Etupa/EmoteGrid/master/icon.png"
 }
