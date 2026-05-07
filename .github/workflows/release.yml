@@ -25,10 +25,10 @@ jobs:
           Expand-Archive -Force latest.zip "$env:AppData\XIVLauncher\addon\Hooks\dev"
 
       - name: Restore Project
-        run: dotnet restore EmoteGrid/EmoteGrid.csproj
+        run: dotnet restore EmoteGrid.csproj
 
       - name: Build Project
-        run: dotnet build --configuration Release EmoteGrid/EmoteGrid.csproj -p:Version=${{ github.ref_name }} -p:AssemblyVersion=${{ github.ref_name }} -p:FileVersion=${{ github.ref_name }} -p:PackageVersion=${{ github.ref_name }} -p:InformationalVersion=${{ github.ref_name }} --output .\build
+        run: dotnet build --configuration Release EmoteGrid.csproj -p:Version=${{ github.ref_name }} -p:AssemblyVersion=${{ github.ref_name }} -p:FileVersion=${{ github.ref_name }} -p:PackageVersion=${{ github.ref_name }} -p:InformationalVersion=${{ github.ref_name }} --output .\build
 
       - name: Zip Plugin
         run: Compress-Archive -Path .\build\* -DestinationPath .\build\latest.zip
