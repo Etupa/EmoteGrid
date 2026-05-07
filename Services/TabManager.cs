@@ -10,33 +10,69 @@ public class TabManager : ITabManager {
         _config = config;
     }
 
-    public void CreateTab(string name) {
-        if (string.IsNullOrWhiteSpace(name) || _config.CustomTabs.Contains(name)) return;
-        _config.CustomTabs.Add(name);
-        _config.TabEmotes[name] = new List<ushort>();
-        _config.Save();
-    }
+    public void EnsureTabOrder() {
+        if (_config.TabOrder.Count > 0) {
+            // Repair: add any custom tabs missing from TabOrder
+            foreach (var tab in _config.CustomTabs) {
+                if (!_config.TabOrder.Contains(tab)) {
+                    _config.TabOrder.Add(tab);
+                }
+            }
+            // Repair: remove stale entries
+            _config.TabOrder.RemoveAll(id =>
+                !_config.IsDefaultTab(id) && !_config.CustomTabs.Contains(id));
+            return;
+        }
 
-    public void RenameTab(int index, string newName) {
-        if (index < 0 || index >= _config.CustomTabs.Count) return;
-        if (string.IsNullOrWhiteSpace(newName)) return;
-
-        var oldName = _config.CustomTabs[index];
-        if (oldName == newName || _config.CustomTabs.Contains(newName)) return;
-
-        _config.CustomTabs[index] = newName;
-        if (_config.TabEmotes.ContainsKey(oldName)) {
-            _config.TabEmotes[newName] = _config.TabEmotes[oldName];
-            _config.TabEmotes.Remove(oldName);
+        // First run or migration: build TabOrder from existing state
+        _config.TabOrder.Add(Configuration.AllEmotesTabId);
+        _config.TabOrder.Add(Configuration.LockedTabId);
+        foreach (var tab in _config.CustomTabs) {
+            _config.TabOrder.Add(tab);
         }
         _config.Save();
     }
 
-    public void DeleteTab(int index) {
-        if (index < 0 || index >= _config.CustomTabs.Count) return;
-        var tabName = _config.CustomTabs[index];
-        _config.CustomTabs.RemoveAt(index);
-        _config.TabEmotes.Remove(tabName);
+    public void CreateTab(string name) {
+        if (string.IsNullOrWhiteSpace(name) || _config.CustomTabs.Contains(name)) return;
+        _config.CustomTabs.Add(name);
+        _config.TabEmotes[name] = new List<ushort>();
+        _config.TabOrder.Add(name);
+        _config.Save();
+    }
+
+    public void RenameTab(int orderIndex, string newName) {
+        if (orderIndex < 0 || orderIndex >= _config.TabOrder.Count) return;
+        if (string.IsNullOrWhiteSpace(newName)) return;
+
+        var oldName = _config.TabOrder[orderIndex];
+        if (_config.IsDefaultTab(oldName)) return; // Can't rename default tabs
+        if (oldName == newName || _config.CustomTabs.Contains(newName)) return;
+
+        // Update CustomTabs
+        int customIdx = _config.CustomTabs.IndexOf(oldName);
+        if (customIdx >= 0) _config.CustomTabs[customIdx] = newName;
+
+        // Update TabEmotes
+        if (_config.TabEmotes.ContainsKey(oldName)) {
+            _config.TabEmotes[newName] = _config.TabEmotes[oldName];
+            _config.TabEmotes.Remove(oldName);
+        }
+
+        // Update TabOrder
+        _config.TabOrder[orderIndex] = newName;
+        _config.Save();
+    }
+
+    public void DeleteTab(int orderIndex) {
+        if (orderIndex < 0 || orderIndex >= _config.TabOrder.Count) return;
+
+        var tabId = _config.TabOrder[orderIndex];
+        if (_config.IsDefaultTab(tabId)) return; // Can't delete default tabs
+
+        _config.TabOrder.RemoveAt(orderIndex);
+        _config.CustomTabs.Remove(tabId);
+        _config.TabEmotes.Remove(tabId);
         _config.Save();
     }
 
@@ -44,20 +80,35 @@ public class TabManager : ITabManager {
         var uniqueName = GenerateUniqueName(newName);
         _config.CustomTabs.Add(uniqueName);
         _config.TabEmotes[uniqueName] = emoteIds.ToList();
+        _config.TabOrder.Add(uniqueName);
         _config.Save();
     }
 
-    public void MoveTabTo(int fromIndex, int toIndex) {
-        if (fromIndex < 0 || fromIndex >= _config.CustomTabs.Count) return;
-        if (toIndex < 0 || toIndex > _config.CustomTabs.Count) return;
-        if (fromIndex == toIndex) return;
+    public void MoveTabLeft(int orderIndex) {
+        if (orderIndex <= 0 || orderIndex >= _config.TabOrder.Count) return;
+        (_config.TabOrder[orderIndex], _config.TabOrder[orderIndex - 1]) =
+            (_config.TabOrder[orderIndex - 1], _config.TabOrder[orderIndex]);
+        _config.Save();
+    }
 
-        var movedTab = _config.CustomTabs[fromIndex];
-        _config.CustomTabs.RemoveAt(fromIndex);
-        int insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+    public void MoveTabRight(int orderIndex) {
+        if (orderIndex < 0 || orderIndex >= _config.TabOrder.Count - 1) return;
+        (_config.TabOrder[orderIndex], _config.TabOrder[orderIndex + 1]) =
+            (_config.TabOrder[orderIndex + 1], _config.TabOrder[orderIndex]);
+        _config.Save();
+    }
+
+    public void MoveTabTo(int fromOrderIndex, int toOrderIndex) {
+        if (fromOrderIndex < 0 || fromOrderIndex >= _config.TabOrder.Count) return;
+        if (toOrderIndex < 0 || toOrderIndex > _config.TabOrder.Count) return;
+        if (fromOrderIndex == toOrderIndex) return;
+
+        var movedTab = _config.TabOrder[fromOrderIndex];
+        _config.TabOrder.RemoveAt(fromOrderIndex);
+        int insertIndex = fromOrderIndex < toOrderIndex ? toOrderIndex - 1 : toOrderIndex;
         if (insertIndex < 0) insertIndex = 0;
-        if (insertIndex > _config.CustomTabs.Count) insertIndex = _config.CustomTabs.Count;
-        _config.CustomTabs.Insert(insertIndex, movedTab);
+        if (insertIndex > _config.TabOrder.Count) insertIndex = _config.TabOrder.Count;
+        _config.TabOrder.Insert(insertIndex, movedTab);
         _config.Save();
     }
 
@@ -84,20 +135,15 @@ public class TabManager : ITabManager {
         if (!_config.TabEmotes.ContainsKey(tabName)) return;
         var list = _config.TabEmotes[tabName];
 
-        // Remove from all other tabs
         foreach (var kvp in _config.TabEmotes) {
             if (kvp.Key != tabName) {
                 kvp.Value.Remove(droppedEmoteId);
             }
         }
 
-        // Remove from current position in this tab
         int sourceIdx = list.IndexOf(droppedEmoteId);
-        if (sourceIdx >= 0) {
-            list.RemoveAt(sourceIdx);
-        }
+        if (sourceIdx >= 0) list.RemoveAt(sourceIdx);
 
-        // Insert before target
         int targetIdx = list.IndexOf(targetEmoteId);
         if (targetIdx >= 0) {
             list.Insert(targetIdx, droppedEmoteId);

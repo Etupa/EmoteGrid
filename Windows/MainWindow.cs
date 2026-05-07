@@ -81,11 +81,18 @@ public class MainWindow : Window, IDisposable {
         DrawSettingsButton();
 
         if (ImGui.BeginTabBar("EmoteTabs")) {
-            DrawAllEmotesTab();
-            DrawLockedEmotesTab();
+            _tabManager.EnsureTabOrder();
 
-            for (int i = 0; i < _config.CustomTabs.Count; i++) {
-                DrawCustomTab(i);
+            for (int i = 0; i < _config.TabOrder.Count; i++) {
+                var tabId = _config.TabOrder[i];
+
+                if (tabId == Configuration.AllEmotesTabId) {
+                    if (!_config.HideAllEmotesTab) DrawDefaultTab(i, "All Emotes", false);
+                } else if (tabId == Configuration.LockedTabId) {
+                    if (!_config.HideLockedEmotesTab) DrawDefaultTab(i, "Locked", true);
+                } else {
+                    DrawCustomTab(i, tabId);
+                }
             }
 
             if (ImGui.TabItemButton("+", ImGuiTabItemFlags.Trailing | ImGuiTabItemFlags.NoReorder)) {
@@ -111,70 +118,67 @@ public class MainWindow : Window, IDisposable {
         ImGui.SetCursorPos(cursorStart);
     }
 
-    // ── Default Tabs ─────────────────────────────────────────────────
+    // ── Default Tabs (All Emotes / Locked) ───────────────────────────
 
-    private unsafe void DrawAllEmotesTab() {
-        if (_config.HideAllEmotesTab) return;
-        if (!ImGui.BeginTabItem("All Emotes", ImGuiTabItemFlags.NoReorder)) return;
+    private unsafe void DrawDefaultTab(int orderIndex, string label, bool showLocked) {
+        if (!ImGui.BeginTabItem($"{label}###order_{orderIndex}", ImGuiTabItemFlags.NoReorder)) return;
 
-        if (ImGui.BeginPopupContextItem("all_emotes_context")) {
+        // Drag source
+        if (ImGui.BeginDragDropSource()) {
+            ImGui.SetDragDropPayload(TabPayloadType, BitConverter.GetBytes(orderIndex), ImGuiCond.None);
+            ImGui.Text($"Move Tab: {label}");
+            ImGui.EndDragDropSource();
+        }
+
+        // Drop target
+        if (ImGui.BeginDragDropTarget()) {
+            var tabPayload = ImGui.AcceptDragDropPayload(TabPayloadType);
+            if (!tabPayload.IsNull && tabPayload.Data != null) {
+                int droppedIndex = *(int*)tabPayload.Data;
+                if (droppedIndex != orderIndex) {
+                    _tabManager.MoveTabTo(droppedIndex, orderIndex);
+                }
+            }
+            ImGui.EndDragDropTarget();
+        }
+
+        // Context menu
+        if (ImGui.BeginPopupContextItem($"default_tab_context_{orderIndex}")) {
             if (ImGui.MenuItem("Duplicate")) {
-                var ids = _emoteRepo.GetUnlockedEmotes().Select(e => e.Id);
-                _tabManager.DuplicateTab("All Emotes", ids);
+                var ids = showLocked
+                    ? _emoteRepo.GetLockedEmotes().Select(e => e.Id)
+                    : _emoteRepo.GetUnlockedEmotes().Select(e => e.Id);
+                _tabManager.DuplicateTab(label, ids);
+            }
+            ImGui.Separator();
+            if (orderIndex > 0 && ImGui.MenuItem("Move Left")) {
+                _tabManager.MoveTabLeft(orderIndex);
+            }
+            if (orderIndex < _config.TabOrder.Count - 1 && ImGui.MenuItem("Move Right")) {
+                _tabManager.MoveTabRight(orderIndex);
             }
             ImGui.EndPopup();
         }
 
-        DrawDefaultTabDropTarget();
-        DrawGrid(_emoteRepo.Emotes, null, false);
+        DrawGrid(_emoteRepo.Emotes, null, showLocked);
         ImGui.EndTabItem();
-    }
-
-    private unsafe void DrawLockedEmotesTab() {
-        if (_config.HideLockedEmotesTab) return;
-        if (!ImGui.BeginTabItem("Locked", ImGuiTabItemFlags.NoReorder)) return;
-
-        if (ImGui.BeginPopupContextItem("locked_emotes_context")) {
-            if (ImGui.MenuItem("Duplicate")) {
-                var ids = _emoteRepo.GetLockedEmotes().Select(e => e.Id);
-                _tabManager.DuplicateTab("Locked", ids);
-            }
-            ImGui.EndPopup();
-        }
-
-        DrawDefaultTabDropTarget();
-        DrawGrid(_emoteRepo.Emotes, null, true);
-        ImGui.EndTabItem();
-    }
-
-    private unsafe void DrawDefaultTabDropTarget() {
-        if (!ImGui.BeginDragDropTarget()) return;
-        var tabPayload = ImGui.AcceptDragDropPayload(TabPayloadType);
-        if (!tabPayload.IsNull && tabPayload.Data != null) {
-            int droppedTabIndex = *(int*)tabPayload.Data;
-            _tabManager.MoveTabTo(droppedTabIndex, 0);
-        }
-        ImGui.EndDragDropTarget();
     }
 
     // ── Custom Tabs ──────────────────────────────────────────────────
 
-    private unsafe void DrawCustomTab(int index) {
-        if (index >= _config.CustomTabs.Count) return;
-        var tabName = _config.CustomTabs[index];
+    private unsafe void DrawCustomTab(int orderIndex, string tabName) {
         var emotesInTab = _config.TabEmotes.ContainsKey(tabName) ? _config.TabEmotes[tabName] : new List<ushort>();
 
-        if (!ImGui.BeginTabItem($"{tabName}###tab_{index}", ImGuiTabItemFlags.NoReorder)) return;
+        if (!ImGui.BeginTabItem($"{tabName}###order_{orderIndex}", ImGuiTabItemFlags.NoReorder)) return;
 
-        // Drag source for TAB reordering
+        // Drag source
         if (ImGui.BeginDragDropSource()) {
-            int sourceIndex = index;
-            ImGui.SetDragDropPayload(TabPayloadType, BitConverter.GetBytes(sourceIndex), ImGuiCond.None);
+            ImGui.SetDragDropPayload(TabPayloadType, BitConverter.GetBytes(orderIndex), ImGuiCond.None);
             ImGui.Text($"Move Tab: {tabName}");
             ImGui.EndDragDropSource();
         }
 
-        // Drop target for TAB reordering or EMOTE receiving
+        // Drop target (tabs + emotes)
         if (ImGui.BeginDragDropTarget()) {
             var emotePayload = ImGui.AcceptDragDropPayload(EmotePayloadType);
             if (!emotePayload.IsNull && emotePayload.Data != null) {
@@ -184,9 +188,9 @@ public class MainWindow : Window, IDisposable {
 
             var tabPayload = ImGui.AcceptDragDropPayload(TabPayloadType);
             if (!tabPayload.IsNull && tabPayload.Data != null) {
-                int droppedTabIndex = *(int*)tabPayload.Data;
-                if (droppedTabIndex != index) {
-                    _tabManager.MoveTabTo(droppedTabIndex, index);
+                int droppedIndex = *(int*)tabPayload.Data;
+                if (droppedIndex != orderIndex) {
+                    _tabManager.MoveTabTo(droppedIndex, orderIndex);
                 }
             }
 
@@ -194,10 +198,10 @@ public class MainWindow : Window, IDisposable {
         }
 
         // Context menu
-        if (ImGui.BeginPopupContextItem($"tab_context_{index}")) {
+        if (ImGui.BeginPopupContextItem($"tab_context_{orderIndex}")) {
             if (ImGui.MenuItem("Rename")) {
                 _isRenamingTab = true;
-                _renamingTabIndex = index;
+                _renamingTabIndex = orderIndex;
                 _renameTabName = tabName;
             }
 
@@ -205,11 +209,22 @@ public class MainWindow : Window, IDisposable {
                 _tabManager.DuplicateTab(tabName, emotesInTab);
             }
 
+            ImGui.Separator();
+
+            if (orderIndex > 0 && ImGui.MenuItem("Move Left")) {
+                _tabManager.MoveTabLeft(orderIndex);
+            }
+            if (orderIndex < _config.TabOrder.Count - 1 && ImGui.MenuItem("Move Right")) {
+                _tabManager.MoveTabRight(orderIndex);
+            }
+
+            ImGui.Separator();
+
             bool canDelete = emotesInTab.Count == 0 || ImGui.GetIO().KeyCtrl;
             if (!canDelete) ImGui.BeginDisabled();
             string deleteText = emotesInTab.Count > 0 ? "Delete (Hold Ctrl)" : "Delete";
             if (ImGui.MenuItem(deleteText)) {
-                _tabManager.DeleteTab(index);
+                _tabManager.DeleteTab(orderIndex);
             }
             if (!canDelete) ImGui.EndDisabled();
 
