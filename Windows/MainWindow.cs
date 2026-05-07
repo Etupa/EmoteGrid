@@ -66,6 +66,7 @@ public class MainWindow : Window, IDisposable {
         } else {
             Flags &= ~ImGuiWindowFlags.NoTitleBar;
         }
+        Flags |= ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
         BgAlpha = _config.BackgroundOpacity / 100f;
     }
 
@@ -78,7 +79,9 @@ public class MainWindow : Window, IDisposable {
     // ── Draw ─────────────────────────────────────────────────────────
 
     public override unsafe void Draw() {
-        DrawSettingsButton();
+        var cursorStart = ImGui.GetCursorPos();
+        var contentWidth = ImGui.GetContentRegionAvail().X;
+        var gearSize = ImGui.GetFrameHeight();
 
         if (ImGui.BeginTabBar("EmoteTabs")) {
             _tabManager.EnsureTabOrder();
@@ -87,9 +90,9 @@ public class MainWindow : Window, IDisposable {
                 var tabId = _config.TabOrder[i];
 
                 if (tabId == Configuration.AllEmotesTabId) {
-                    if (!_config.HideAllEmotesTab) DrawDefaultTab(i, "All Emotes", false);
+                    if (!_config.HideAllEmotesTab) DrawDefaultTab(i, "All Emotes", false, true);
                 } else if (tabId == Configuration.LockedTabId) {
-                    if (!_config.HideLockedEmotesTab) DrawDefaultTab(i, "Locked", true);
+                    if (!_config.HideLockedEmotesTab) DrawDefaultTab(i, _config.CustomLockedTabName, true, false);
                 } else {
                     DrawCustomTab(i, tabId);
                 }
@@ -102,25 +105,23 @@ public class MainWindow : Window, IDisposable {
             ImGui.EndTabBar();
         }
 
-        HandleModals();
-    }
+        var cursorAfterTab = ImGui.GetCursorPos();
+        ImGui.SetCursorPos(new Vector2(cursorStart.X + contentWidth - gearSize, cursorStart.Y));
 
-    private void DrawSettingsButton() {
-        var cursorStart = ImGui.GetCursorPos();
-        var contentWidth = ImGui.GetContentRegionAvail().X;
-        var frameHeight = ImGui.GetFrameHeight();
-        ImGui.SetCursorPosX(cursorStart.X + contentWidth - frameHeight);
         _pluginInterface.UiBuilder.IconFontFixedWidthHandle.Push();
-        if (ImGui.Button(FontAwesomeIcon.Cog.ToIconString(), new Vector2(frameHeight, frameHeight))) {
+        if (ImGui.Button(FontAwesomeIcon.Cog.ToIconString(), new Vector2(gearSize, gearSize))) {
             OnToggleConfig?.Invoke();
         }
         _pluginInterface.UiBuilder.IconFontFixedWidthHandle.Pop();
-        ImGui.SetCursorPos(cursorStart);
+
+        ImGui.SetCursorPos(cursorAfterTab);
+
+        HandleModals();
     }
 
     // ── Default Tabs (All Emotes / Locked) ───────────────────────────
 
-    private unsafe void DrawDefaultTab(int orderIndex, string label, bool showLocked) {
+    private unsafe void DrawDefaultTab(int orderIndex, string label, bool showLocked, bool showDuplicate) {
         if (!ImGui.BeginTabItem($"{label}###order_{orderIndex}", ImGuiTabItemFlags.NoReorder)) return;
 
         // Drag source
@@ -144,13 +145,18 @@ public class MainWindow : Window, IDisposable {
 
         // Context menu
         if (ImGui.BeginPopupContextItem($"default_tab_context_{orderIndex}")) {
-            if (ImGui.MenuItem("Duplicate")) {
+            if (showLocked && ImGui.MenuItem("Rename")) {
+                _isRenamingTab = true;
+                _renamingTabIndex = orderIndex;
+                _renameTabName = label;
+            }
+            if (showDuplicate && ImGui.MenuItem("Duplicate")) {
                 var ids = showLocked
                     ? _emoteRepo.GetLockedEmotes().Select(e => e.Id)
                     : _emoteRepo.GetUnlockedEmotes().Select(e => e.Id);
                 _tabManager.DuplicateTab(label, ids);
             }
-            ImGui.Separator();
+            if (showDuplicate) ImGui.Separator();
             if (orderIndex > 0 && ImGui.MenuItem("Move Left")) {
                 _tabManager.MoveTabLeft(orderIndex);
             }
@@ -266,6 +272,14 @@ public class MainWindow : Window, IDisposable {
 
                     if (currentColumn == 0) ImGui.TableNextRow();
                     ImGui.TableSetColumnIndex(currentColumn);
+
+                    // Center the icon in the cell to eliminate uneven right-side padding
+                    var cellAvail = ImGui.GetContentRegionAvail().X;
+                    var buttonTotalWidth = iconSize + (ImGui.GetStyle().FramePadding.X * 2);
+                    var offset = (cellAvail - buttonTotalWidth) / 2.0f;
+                    if (offset > 0) {
+                        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
+                    }
 
                     DrawEmoteIcon(emote, iconSize, activeTabName, showLockedOnly);
 

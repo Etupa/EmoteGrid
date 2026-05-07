@@ -15,6 +15,7 @@ public class Configuration : IPluginConfiguration {
     public int BackgroundOpacity { get; set; } = 100;
     public bool HideAllEmotesTab { get; set; } = false;
     public bool HideLockedEmotesTab { get; set; } = false;
+    public string CustomLockedTabName { get; set; } = "Locked";
 
     // Unified tab rendering order (contains default tab IDs and custom tab names)
     public List<string> TabOrder { get; set; } = new();

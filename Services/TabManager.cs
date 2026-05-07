@@ -46,7 +46,14 @@ public class TabManager : ITabManager {
         if (string.IsNullOrWhiteSpace(newName)) return;
 
         var oldName = _config.TabOrder[orderIndex];
-        if (_config.IsDefaultTab(oldName)) return; // Can't rename default tabs
+
+        if (oldName == Configuration.LockedTabId) {
+            _config.CustomLockedTabName = newName;
+            _config.Save();
+            return;
+        }
+
+        if (_config.IsDefaultTab(oldName)) return; // Can't rename All Emotes
         if (oldName == newName || _config.CustomTabs.Contains(newName)) return;
 
         // Update CustomTabs
