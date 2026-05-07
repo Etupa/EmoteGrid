@@ -25,6 +25,7 @@ public sealed class EmoteGridPlugin : IDalamudPlugin {
 
         MainWindow = new MainWindow(Config);
         ConfigWindow = new ConfigWindow(Config);
+        MainWindow.OnToggleConfig = () => ConfigWindow.IsOpen = !ConfigWindow.IsOpen;
         WindowSystem.AddWindow(MainWindow);
         WindowSystem.AddWindow(ConfigWindow);
 

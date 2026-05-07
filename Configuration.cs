@@ -11,6 +11,7 @@ public class Configuration : IPluginConfiguration {
     public bool HideHeader { get; set; } = false;
     public int BackgroundOpacity { get; set; } = 100;
     public bool HideAllEmotesTab { get; set; } = false;
+    public bool HideLockedEmotesTab { get; set; } = false;
 
     // List of custom tab names
     public List<string> CustomTabs { get; set; } = new();

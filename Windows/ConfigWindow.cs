@@ -42,6 +42,12 @@ public class ConfigWindow : Window, IDisposable {
             save = true;
         }
 
+        bool hideLockedEmotesTab = _config.HideLockedEmotesTab;
+        if (ImGui.Checkbox("Hide 'Locked Emotes' Tab", ref hideLockedEmotesTab)) {
+            _config.HideLockedEmotesTab = hideLockedEmotesTab;
+            save = true;
+        }
+
         int opacity = _config.BackgroundOpacity;
         if (ImGui.SliderInt("Background Opacity %", ref opacity, 0, 100, "%d")) {
             _config.BackgroundOpacity = opacity;

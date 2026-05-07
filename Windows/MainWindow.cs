@@ -7,6 +7,8 @@ using Dalamud.Interface.Windowing;
 using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Interface.Utility;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Client.UI.Shell;
+using Dalamud.Interface;
 using Dalamud.Bindings.ImGui;
 using ImGui = Dalamud.Bindings.ImGui.ImGui;
 
@@ -23,9 +25,10 @@ public class MainWindow : Window, IDisposable {
     private int _renamingTabIndex = -1;
     private string _renameTabName = "";
 
-    // Helper for payload string
     private const string EmotePayloadType = "EMOTE_PAYLOAD";
     private const string TabPayloadType = "TAB_PAYLOAD";
+
+    public Action? OnToggleConfig;
 
     public MainWindow(Configuration config) : base("Emote Grid##EmoteGrid") {
         _config = config;
@@ -96,8 +99,20 @@ public class MainWindow : Window, IDisposable {
     }
 
     public override unsafe void Draw() {
+        // Gear button at far right of window, above tab bar
+        var cursorStart = ImGui.GetCursorPos();
+        var contentWidth = ImGui.GetContentRegionAvail().X;
+        var frameHeight = ImGui.GetFrameHeight();
+        ImGui.SetCursorPosX(cursorStart.X + contentWidth - frameHeight);
+        EmoteGridPlugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Push();
+        if (ImGui.Button(FontAwesomeIcon.Cog.ToIconString(), new Vector2(frameHeight, frameHeight))) {
+            OnToggleConfig?.Invoke();
+        }
+        EmoteGridPlugin.PluginInterface.UiBuilder.IconFontFixedWidthHandle.Pop();
+        ImGui.SetCursorPos(cursorStart);
+
         if (ImGui.BeginTabBar("EmoteTabs")) {
-            
+
             if (!_config.HideAllEmotesTab && ImGui.BeginTabItem("All Emotes", ImGuiTabItemFlags.NoReorder)) {
                 if (ImGui.BeginPopupContextItem("all_emotes_context")) {
                     if (ImGui.MenuItem("Duplicate")) {
@@ -108,7 +123,7 @@ public class MainWindow : Window, IDisposable {
                             newTab = $"All Emotes (Copy {copyCount})";
                         }
                         _config.CustomTabs.Add(newTab);
-                        _config.TabEmotes[newTab] = _emotes.Select(e => e.Id).ToList();
+                        _config.TabEmotes[newTab] = _emotes.Where(e => e.EmoteSheetData.UnlockLink == 0 || EmoteGridPlugin.UnlockState.IsEmoteUnlocked(e.EmoteSheetData)).Select(e => e.Id).ToList();
                         _config.Save();
                     }
                     ImGui.EndPopup();
@@ -129,7 +144,42 @@ public class MainWindow : Window, IDisposable {
                     ImGui.EndDragDropTarget();
                 }
 
-                DrawGrid(_emotes, null);
+                DrawGrid(_emotes, null, false);
+                ImGui.EndTabItem();
+            }
+
+            if (!_config.HideLockedEmotesTab && ImGui.BeginTabItem("Locked", ImGuiTabItemFlags.NoReorder)) {
+                if (ImGui.BeginPopupContextItem("locked_emotes_context")) {
+                    if (ImGui.MenuItem("Duplicate")) {
+                        string newTab = "Locked (Copy)";
+                        int copyCount = 1;
+                        while (_config.CustomTabs.Contains(newTab)) {
+                            copyCount++;
+                            newTab = $"Locked (Copy {copyCount})";
+                        }
+                        _config.CustomTabs.Add(newTab);
+                        _config.TabEmotes[newTab] = _emotes.Where(e => e.EmoteSheetData.UnlockLink != 0 && !EmoteGridPlugin.UnlockState.IsEmoteUnlocked(e.EmoteSheetData)).Select(e => e.Id).ToList();
+                        _config.Save();
+                    }
+                    ImGui.EndPopup();
+                }
+
+                // Drop target for TAB reordering onto Locked Emotes (Move to index 0)
+                if (ImGui.BeginDragDropTarget()) {
+                    var tabPayload = ImGui.AcceptDragDropPayload(TabPayloadType);
+                    if (!tabPayload.IsNull && tabPayload.Data != null) {
+                        int droppedTabIndex = *(int*)tabPayload.Data;
+                        if (droppedTabIndex >= 0 && droppedTabIndex < _config.CustomTabs.Count) {
+                            var movedTab = _config.CustomTabs[droppedTabIndex];
+                            _config.CustomTabs.RemoveAt(droppedTabIndex);
+                            _config.CustomTabs.Insert(0, movedTab);
+                            _config.Save();
+                        }
+                    }
+                    ImGui.EndDragDropTarget();
+                }
+
+                DrawGrid(_emotes, null, true);
                 ImGui.EndTabItem();
             }
 
@@ -241,24 +291,29 @@ public class MainWindow : Window, IDisposable {
         }
     }
 
-    private void DrawGrid(IEnumerable<EmoteData> emotes, string? activeTabName) {
+    private void DrawGrid(IEnumerable<EmoteData> emotes, string? activeTabName, bool showLockedOnly = false) {
         var iconSize = 34.0f * ImGuiHelpers.GlobalScale * _config.GridScale;
         var padding = 4.0f * ImGuiHelpers.GlobalScale;
         var cellSize = iconSize + padding;
 
-        if (ImGui.BeginChild("EmoteGridScrollable")) {
+        string gridId = activeTabName ?? (showLockedOnly ? "locked_emotes" : "all_emotes");
+
+        if (ImGui.BeginChild($"EmoteGridScrollable##{gridId}")) {
             var contentRegion = ImGui.GetContentRegionAvail();
             var totalCellWidth = cellSize + (ImGui.GetStyle().CellPadding.X * 2);
             var columns = (int)(contentRegion.X / totalCellWidth);
             if (columns < 1) columns = 1;
 
-            if (ImGui.BeginTable("EmoteGridTable", columns, ImGuiTableFlags.None)) {
+            if (ImGui.BeginTable($"EmoteGridTable##{gridId}", columns, ImGuiTableFlags.None)) {
                 
                 int currentColumn = 0;
 
                 foreach (var emote in emotes) {
-                    if (emote.EmoteSheetData.UnlockLink != 0 && !EmoteGridPlugin.UnlockState.IsEmoteUnlocked(emote.EmoteSheetData)) {
-                        continue;
+                    bool isLocked = emote.EmoteSheetData.UnlockLink != 0 && !EmoteGridPlugin.UnlockState.IsEmoteUnlocked(emote.EmoteSheetData);
+                    if (showLockedOnly) {
+                        if (!isLocked) continue;
+                    } else {
+                        if (isLocked) continue;
                     }
 
                     if (currentColumn == 0) {
@@ -266,7 +321,7 @@ public class MainWindow : Window, IDisposable {
                     }
                     ImGui.TableSetColumnIndex(currentColumn);
 
-                    DrawEmoteIcon(emote, iconSize, activeTabName);
+                    DrawEmoteIcon(emote, iconSize, activeTabName, showLockedOnly);
 
                     currentColumn++;
                     if (currentColumn >= columns) {
@@ -280,7 +335,7 @@ public class MainWindow : Window, IDisposable {
         }
     }
 
-    private unsafe void DrawEmoteIcon(EmoteData emote, float size, string? activeTabName) {
+    private unsafe void DrawEmoteIcon(EmoteData emote, float size, string? activeTabName, bool useTextCommand = false) {
         if (emote.IconLoadFailed) return;
 
         try {
@@ -292,7 +347,11 @@ public class MainWindow : Window, IDisposable {
             if (tex != null) {
                 ImGui.PushID($"emote_{emote.Id}");
                 if (ImGui.ImageButton(tex.Handle, new Vector2(size, size))) {
-                    ExecuteEmote(emote.Id);
+                    if (useTextCommand) {
+                        ExecuteEmoteViaTextCommand(emote);
+                    } else {
+                        ExecuteEmote(emote.Id);
+                    }
                 }
 
                 // Drag Source for Emote
@@ -377,6 +436,45 @@ public class MainWindow : Window, IDisposable {
         if (agentEmote == null) return;
 
         agentEmote->ExecuteEmote(emoteId);
+    }
+
+    private unsafe void ExecuteEmoteViaTextCommand(EmoteData emote) {
+        try {
+            var textCommandRef = emote.EmoteSheetData.TextCommand;
+            if (textCommandRef.RowId == 0) {
+                // Fallback to AgentEmote if no text command
+                ExecuteEmote(emote.Id);
+                return;
+            }
+
+            var textCommandSheet = EmoteGridPlugin.DataManager.GetExcelSheet<Lumina.Excel.Sheets.TextCommand>();
+            if (textCommandSheet == null) {
+                ExecuteEmote(emote.Id);
+                return;
+            }
+
+            var textCommand = textCommandSheet.GetRow(textCommandRef.RowId);
+            var command = textCommand.Command.ToString();
+            if (string.IsNullOrEmpty(command)) {
+                ExecuteEmote(emote.Id);
+                return;
+            }
+
+            var uiModule = FFXIVClientStructs.FFXIV.Client.UI.UIModule.Instance();
+            if (uiModule == null) return;
+
+            var shellModule = uiModule->GetRaptureShellModule();
+            if (shellModule == null) return;
+
+            var utf8Command = new FFXIVClientStructs.FFXIV.Client.System.String.Utf8String();
+            utf8Command.SetString(command);
+            shellModule->ExecuteCommandInner(&utf8Command, uiModule);
+            utf8Command.Dtor();
+        } catch (Exception ex) {
+            EmoteGridPlugin.PluginLog.Error($"Failed to execute emote via text command: {ex.Message}");
+            // Fallback to AgentEmote
+            ExecuteEmote(emote.Id);
+        }
     }
 
     private void HandleModals() {
