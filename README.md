@@ -2,6 +2,10 @@
 
 A standalone Dalamud plugin providing a scalable and customizable ImGui grid for emotes.
 
+## Installation
+To install this plugin, add the following URL to your Dalamud Plugin Repositories:
+`https://raw.githubusercontent.com/Etupa/Dalamud_Plugins/master/pluginmaster.json`
+
 ## Commands
 - `/emotegrid`: Open the main Emote Grid window.
 - `/emotegrid refresh`: Manually refresh the emote list from the game data.
