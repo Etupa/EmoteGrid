@@ -1,13 +1,17 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using EmoteGrid.Models;
 
 namespace EmoteGrid.Services;
 
 public class TabManager : ITabManager {
-    private readonly Configuration _config;
+    private readonly WindowConfig _config;
+    private readonly Action? _onSave;
 
-    public TabManager(Configuration config) {
+    public TabManager(WindowConfig config, Action? onSave = null) {
         _config = config;
+        _onSave = onSave;
     }
 
     public void EnsureTabOrder() {
@@ -25,12 +29,12 @@ public class TabManager : ITabManager {
         }
 
         // First run or migration: build TabOrder from existing state
-        _config.TabOrder.Add(Configuration.AllEmotesTabId);
-        _config.TabOrder.Add(Configuration.LockedTabId);
+        _config.TabOrder.Add(WindowConfig.AllEmotesTabId);
+        _config.TabOrder.Add(WindowConfig.LockedTabId);
         foreach (var tab in _config.CustomTabs) {
             _config.TabOrder.Add(tab);
         }
-        _config.Save();
+        _onSave?.Invoke();
     }
 
     public void CreateTab(string name) {
@@ -38,7 +42,7 @@ public class TabManager : ITabManager {
         _config.CustomTabs.Add(name);
         _config.TabEmotes[name] = new List<ushort>();
         _config.TabOrder.Add(name);
-        _config.Save();
+        _onSave?.Invoke();
     }
 
     public void RenameTab(int orderIndex, string newName) {
@@ -47,9 +51,9 @@ public class TabManager : ITabManager {
 
         var oldName = _config.TabOrder[orderIndex];
 
-        if (oldName == Configuration.LockedTabId) {
+        if (oldName == WindowConfig.LockedTabId) {
             _config.CustomLockedTabName = newName;
-            _config.Save();
+            _onSave?.Invoke();
             return;
         }
 
@@ -68,7 +72,7 @@ public class TabManager : ITabManager {
 
         // Update TabOrder
         _config.TabOrder[orderIndex] = newName;
-        _config.Save();
+        _onSave?.Invoke();
     }
 
     public void DeleteTab(int orderIndex) {
@@ -80,7 +84,7 @@ public class TabManager : ITabManager {
         _config.TabOrder.RemoveAt(orderIndex);
         _config.CustomTabs.Remove(tabId);
         _config.TabEmotes.Remove(tabId);
-        _config.Save();
+        _onSave?.Invoke();
     }
 
     public void DuplicateTab(string newName, IEnumerable<ushort> emoteIds) {
@@ -88,21 +92,21 @@ public class TabManager : ITabManager {
         _config.CustomTabs.Add(uniqueName);
         _config.TabEmotes[uniqueName] = emoteIds.ToList();
         _config.TabOrder.Add(uniqueName);
-        _config.Save();
+        _onSave?.Invoke();
     }
 
     public void MoveTabLeft(int orderIndex) {
         if (orderIndex <= 0 || orderIndex >= _config.TabOrder.Count) return;
         (_config.TabOrder[orderIndex], _config.TabOrder[orderIndex - 1]) =
             (_config.TabOrder[orderIndex - 1], _config.TabOrder[orderIndex]);
-        _config.Save();
+        _onSave?.Invoke();
     }
 
     public void MoveTabRight(int orderIndex) {
         if (orderIndex < 0 || orderIndex >= _config.TabOrder.Count - 1) return;
         (_config.TabOrder[orderIndex], _config.TabOrder[orderIndex + 1]) =
             (_config.TabOrder[orderIndex + 1], _config.TabOrder[orderIndex]);
-        _config.Save();
+        _onSave?.Invoke();
     }
 
     public void MoveTabTo(int fromOrderIndex, int toOrderIndex) {
@@ -116,7 +120,7 @@ public class TabManager : ITabManager {
         if (insertIndex < 0) insertIndex = 0;
         if (insertIndex > _config.TabOrder.Count) insertIndex = _config.TabOrder.Count;
         _config.TabOrder.Insert(insertIndex, movedTab);
-        _config.Save();
+        _onSave?.Invoke();
     }
 
     public void MoveEmoteToTab(ushort emoteId, string targetTab) {
@@ -127,7 +131,7 @@ public class TabManager : ITabManager {
             _config.TabEmotes[targetTab] = new List<ushort>();
         }
         _config.TabEmotes[targetTab].Add(emoteId);
-        _config.Save();
+        _onSave?.Invoke();
     }
 
     public void RemoveEmoteFromAllTabs(ushort emoteId) {
@@ -135,7 +139,7 @@ public class TabManager : ITabManager {
         foreach (var list in _config.TabEmotes.Values) {
             if (list.Remove(emoteId)) removed = true;
         }
-        if (removed) _config.Save();
+        if (removed) _onSave?.Invoke();
     }
 
     public void ReorderEmoteInTab(string tabName, ushort droppedEmoteId, ushort targetEmoteId) {
@@ -157,7 +161,7 @@ public class TabManager : ITabManager {
         } else {
             list.Add(droppedEmoteId);
         }
-        _config.Save();
+        _onSave?.Invoke();
     }
 
     public string GenerateUniqueName(string baseName) {

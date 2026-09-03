@@ -16,12 +16,13 @@ using ImGui = Dalamud.Bindings.ImGui.ImGui;
 namespace EmoteGrid;
 
 public class MainWindow : Window, IDisposable {
-    private readonly Configuration _config;
+    private readonly WindowConfig _config;
     private readonly IEmoteRepository _emoteRepo;
     private readonly IEmoteExecutor _emoteExecutor;
     private readonly ITabManager _tabManager;
     private readonly IDalamudPluginInterface _pluginInterface;
     private readonly ITextureProvider _textureProvider;
+    private readonly Action? _onSave;
 
     private bool _isCreatingTab = false;
     private string _newTabName = "";
@@ -34,21 +35,28 @@ public class MainWindow : Window, IDisposable {
     private const string TabPayloadType = "TAB_PAYLOAD";
 
     public Action? OnToggleConfig;
+    public Action? OnFocused;
+
+    public WindowConfig WindowConfig => _config;
 
     public MainWindow(
-        Configuration config,
+        WindowConfig config,
         IEmoteRepository emoteRepo,
         IEmoteExecutor emoteExecutor,
         ITabManager tabManager,
         IDalamudPluginInterface pluginInterface,
-        ITextureProvider textureProvider
-    ) : base("Emote Grid##EmoteGrid") {
+        ITextureProvider textureProvider,
+        Action? onSave = null
+    ) : base(config.Id == "main" && config.Title == "Emote Grid" ? "Emote Grid##EmoteGrid" : $"{config.Title}###EmoteGrid_{config.Id}") {
         _config = config;
         _emoteRepo = emoteRepo;
         _emoteExecutor = emoteExecutor;
         _tabManager = tabManager;
         _pluginInterface = pluginInterface;
         _textureProvider = textureProvider;
+        _onSave = onSave;
+
+        IsOpen = config.IsOpen;
 
         SizeConstraints = new WindowSizeConstraints {
             MinimumSize = new Vector2(300, 300),
@@ -56,8 +64,22 @@ public class MainWindow : Window, IDisposable {
         };
     }
 
+    public void UpdateTitle(string newTitle) {
+        _config.Title = newTitle;
+        WindowName = _config.Id == "main" && newTitle == "Emote Grid"
+            ? "Emote Grid##EmoteGrid"
+            : $"{newTitle}###EmoteGrid_{_config.Id}";
+    }
+
     public override void OnOpen() {
         _emoteRepo.Reload();
+        _config.IsOpen = true;
+        _onSave?.Invoke();
+    }
+
+    public override void OnClose() {
+        _config.IsOpen = false;
+        _onSave?.Invoke();
     }
 
     public override void PreDraw() {
@@ -79,19 +101,34 @@ public class MainWindow : Window, IDisposable {
     // ── Draw ─────────────────────────────────────────────────────────
 
     public override unsafe void Draw() {
+        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows)) {
+            OnFocused?.Invoke();
+        }
+
+        if (!_config.HideTabBar) {
+            DrawTabBarWithGrid();
+        } else {
+            DrawGridOnly();
+        }
+
+        DrawWindowContextMenu();
+        HandleModals();
+    }
+
+    private unsafe void DrawTabBarWithGrid() {
         var cursorStart = ImGui.GetCursorPos();
         var contentWidth = ImGui.GetContentRegionAvail().X;
         var gearSize = ImGui.GetFrameHeight();
 
-        if (ImGui.BeginTabBar("EmoteTabs")) {
+        if (ImGui.BeginTabBar($"EmoteTabs_{_config.Id}")) {
             _tabManager.EnsureTabOrder();
 
             for (int i = 0; i < _config.TabOrder.Count; i++) {
                 var tabId = _config.TabOrder[i];
 
-                if (tabId == Configuration.AllEmotesTabId) {
+                if (tabId == WindowConfig.AllEmotesTabId) {
                     if (!_config.HideAllEmotesTab) DrawDefaultTab(i, "All Emotes", false, true);
-                } else if (tabId == Configuration.LockedTabId) {
+                } else if (tabId == WindowConfig.LockedTabId) {
                     if (!_config.HideLockedEmotesTab) DrawDefaultTab(i, _config.CustomLockedTabName, true, false);
                 } else {
                     DrawCustomTab(i, tabId);
@@ -115,14 +152,92 @@ public class MainWindow : Window, IDisposable {
         _pluginInterface.UiBuilder.IconFontFixedWidthHandle.Pop();
 
         ImGui.SetCursorPos(cursorAfterTab);
+    }
 
-        HandleModals();
+    private void DrawGridOnly() {
+        _tabManager.EnsureTabOrder();
+
+        string? activeTab = _config.SelectedTab;
+        if (string.IsNullOrEmpty(activeTab) || !IsTabVisible(activeTab)) {
+            activeTab = GetFirstVisibleTab();
+            _config.SelectedTab = activeTab;
+        }
+
+        if (activeTab != null) {
+            if (activeTab == WindowConfig.AllEmotesTabId) {
+                DrawGrid(_emoteRepo.Emotes, null, false);
+            } else if (activeTab == WindowConfig.LockedTabId) {
+                DrawGrid(_emoteRepo.Emotes, null, true);
+            } else {
+                var emotesInTab = _config.TabEmotes.TryGetValue(activeTab, out var list) ? list : new List<ushort>();
+                var filteredEmotes = _emoteRepo.GetEmotesByIds(emotesInTab);
+                DrawGrid(filteredEmotes, activeTab);
+            }
+        }
+    }
+
+    public bool IsTabVisible(string tabId) {
+        if (tabId == WindowConfig.AllEmotesTabId) return !_config.HideAllEmotesTab;
+        if (tabId == WindowConfig.LockedTabId) return !_config.HideLockedEmotesTab;
+        return _config.CustomTabs.Contains(tabId);
+    }
+
+    public string? GetFirstVisibleTab() {
+        foreach (var tabId in _config.TabOrder) {
+            if (IsTabVisible(tabId)) return tabId;
+        }
+        if (!_config.HideAllEmotesTab) return WindowConfig.AllEmotesTabId;
+        if (!_config.HideLockedEmotesTab) return WindowConfig.LockedTabId;
+        return _config.CustomTabs.FirstOrDefault();
+    }
+
+    // ── Window Background Context Menu ───────────────────────────────
+
+    private void DrawWindowContextMenu() {
+        if (ImGui.BeginPopupContextWindow($"MainWindowContext_{_config.Id}")) {
+            if (ImGui.MenuItem("Settings")) {
+                OnToggleConfig?.Invoke();
+            }
+
+            if (_config.HideTabBar) {
+                if (ImGui.BeginMenu("Switch Tab")) {
+                    foreach (var tabId in _config.TabOrder) {
+                        if (!IsTabVisible(tabId)) continue;
+                        string tabLabel = tabId switch {
+                            WindowConfig.AllEmotesTabId => "All Emotes",
+                            WindowConfig.LockedTabId => _config.CustomLockedTabName,
+                            _ => tabId
+                        };
+                        bool isSelected = _config.SelectedTab == tabId;
+                        if (ImGui.MenuItem(tabLabel, string.Empty, isSelected)) {
+                            _config.SelectedTab = tabId;
+                            _onSave?.Invoke();
+                        }
+                    }
+                    ImGui.EndMenu();
+                }
+
+                if (ImGui.MenuItem("Show Tab Bar")) {
+                    _config.HideTabBar = false;
+                    _onSave?.Invoke();
+                }
+            } else {
+                if (ImGui.MenuItem("Hide Tab Bar")) {
+                    _config.HideTabBar = true;
+                    _onSave?.Invoke();
+                }
+            }
+
+            ImGui.EndPopup();
+        }
     }
 
     // ── Default Tabs (All Emotes / Locked) ───────────────────────────
 
     private unsafe void DrawDefaultTab(int orderIndex, string label, bool showLocked, bool showDuplicate) {
         if (!ImGui.BeginTabItem($"{label}###order_{orderIndex}", ImGuiTabItemFlags.NoReorder)) return;
+
+        _config.SelectedTab = _config.TabOrder[orderIndex];
 
         // Drag source
         if (ImGui.BeginDragDropSource()) {
@@ -176,6 +291,8 @@ public class MainWindow : Window, IDisposable {
         var emotesInTab = _config.TabEmotes.ContainsKey(tabName) ? _config.TabEmotes[tabName] : new List<ushort>();
 
         if (!ImGui.BeginTabItem($"{tabName}###order_{orderIndex}", ImGuiTabItemFlags.NoReorder)) return;
+
+        _config.SelectedTab = tabName;
 
         // Drag source
         if (ImGui.BeginDragDropSource()) {
@@ -252,13 +369,13 @@ public class MainWindow : Window, IDisposable {
 
         string gridId = activeTabName ?? (showLockedOnly ? "locked_emotes" : "all_emotes");
 
-        if (ImGui.BeginChild($"EmoteGridScrollable##{gridId}")) {
+        if (ImGui.BeginChild($"EmoteGridScrollable##{gridId}_{_config.Id}")) {
             var contentRegion = ImGui.GetContentRegionAvail();
             var totalCellWidth = cellSize + (ImGui.GetStyle().CellPadding.X * 2);
             var columns = (int)(contentRegion.X / totalCellWidth);
             if (columns < 1) columns = 1;
 
-            if (ImGui.BeginTable($"EmoteGridTable##{gridId}", columns, ImGuiTableFlags.None)) {
+            if (ImGui.BeginTable($"EmoteGridTable##{gridId}_{_config.Id}", columns, ImGuiTableFlags.None)) {
                 int currentColumn = 0;
 
                 foreach (var emote in emotes) {
@@ -359,13 +476,13 @@ public class MainWindow : Window, IDisposable {
 
     private void HandleModals() {
         if (_isCreatingTab) {
-            ImGui.OpenPopup("Create New Tab");
+            ImGui.OpenPopup($"Create New Tab##{_config.Id}");
             _isCreatingTab = false;
             _newTabName = "";
         }
 
         bool createOpen = true;
-        if (ImGui.BeginPopupModal("Create New Tab", ref createOpen, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (ImGui.BeginPopupModal($"Create New Tab##{_config.Id}", ref createOpen, ImGuiWindowFlags.AlwaysAutoResize)) {
             ImGui.InputText("Tab Name", ref _newTabName, 50);
             if (ImGui.Button("Create") && !string.IsNullOrWhiteSpace(_newTabName)) {
                 _tabManager.CreateTab(_newTabName);
@@ -379,12 +496,12 @@ public class MainWindow : Window, IDisposable {
         }
 
         if (_isRenamingTab) {
-            ImGui.OpenPopup("Rename Tab");
+            ImGui.OpenPopup($"Rename Tab##{_config.Id}");
             _isRenamingTab = false;
         }
 
         bool renameOpen = true;
-        if (ImGui.BeginPopupModal("Rename Tab", ref renameOpen, ImGuiWindowFlags.AlwaysAutoResize)) {
+        if (ImGui.BeginPopupModal($"Rename Tab##{_config.Id}", ref renameOpen, ImGuiWindowFlags.AlwaysAutoResize)) {
             ImGui.InputText("New Tab Name", ref _renameTabName, 50);
             if (ImGui.Button("Rename") && !string.IsNullOrWhiteSpace(_renameTabName)) {
                 _tabManager.RenameTab(_renamingTabIndex, _renameTabName);
