@@ -21,6 +21,7 @@ public class Configuration : IPluginConfiguration {
     public bool HideHeader { get; set; } = false;
     public bool HideTabBar { get; set; } = false;
     public int BackgroundOpacity { get; set; } = 100;
+    public int IconOpacity { get; set; } = 100;
     public bool HideAllEmotesTab { get; set; } = false;
     public bool HideLockedEmotesTab { get; set; } = false;
     public string CustomLockedTabName { get; set; } = "Locked";
@@ -40,6 +41,7 @@ public class Configuration : IPluginConfiguration {
                 HideHeader = HideHeader,
                 HideTabBar = HideTabBar,
                 BackgroundOpacity = BackgroundOpacity,
+                IconOpacity = IconOpacity,
                 HideAllEmotesTab = HideAllEmotesTab,
                 HideLockedEmotesTab = HideLockedEmotesTab,
                 CustomLockedTabName = CustomLockedTabName,
@@ -64,6 +66,7 @@ public class Configuration : IPluginConfiguration {
             HideHeader = main.HideHeader;
             HideTabBar = main.HideTabBar;
             BackgroundOpacity = main.BackgroundOpacity;
+            IconOpacity = main.IconOpacity;
             HideAllEmotesTab = main.HideAllEmotesTab;
             HideLockedEmotesTab = main.HideLockedEmotesTab;
             CustomLockedTabName = main.CustomLockedTabName;

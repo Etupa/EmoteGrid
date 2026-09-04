@@ -424,8 +424,19 @@ public class MainWindow : Window, IDisposable {
 
             ImGui.PushID($"emote_{emote.Id}");
 
+            float iconAlpha = Math.Clamp(_config.IconOpacity / 100f, 0.0f, 1.0f);
+            bool pushedAlpha = false;
+            if (iconAlpha < 1.0f) {
+                ImGui.PushStyleVar(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * iconAlpha);
+                pushedAlpha = true;
+            }
+
             if (ImGui.ImageButton(tex.Handle, new Vector2(size, size))) {
                 _emoteExecutor.Execute(emote, useTextCommand);
+            }
+
+            if (pushedAlpha) {
+                ImGui.PopStyleVar();
             }
 
             // Drag Source

@@ -19,7 +19,7 @@ public class ConfigWindow : Window, IDisposable {
         _plugin = plugin;
 
         SizeConstraints = new WindowSizeConstraints {
-            MinimumSize = new Vector2(350, 260),
+            MinimumSize = new Vector2(350, 285),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue)
         };
     }
@@ -188,6 +188,13 @@ public class ConfigWindow : Window, IDisposable {
         int opacity = currentConfig.BackgroundOpacity;
         if (ImGui.SliderInt("Background Opacity %", ref opacity, 0, 100, "%d")) {
             currentConfig.BackgroundOpacity = opacity;
+            save = true;
+        }
+
+        // ── Icon Opacity ─────────────────────────────────────────────
+        int iconOpacity = currentConfig.IconOpacity;
+        if (ImGui.SliderInt("Icon Opacity %", ref iconOpacity, 0, 100, "%d")) {
+            currentConfig.IconOpacity = iconOpacity;
             save = true;
         }
 
