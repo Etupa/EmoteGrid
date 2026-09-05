@@ -39,6 +39,13 @@ public sealed class EmoteGridPlugin : IDalamudPlugin {
         Config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         Config.Initialize();
 
+        // If not logged in (e.g. game launched to title screen), ensure all windows start closed
+        if (!ClientState.IsLoggedIn) {
+            foreach (var winConfig in Config.Windows) {
+                winConfig.IsOpen = false;
+            }
+        }
+
         // Services
         _emoteRepo = new EmoteRepository(DataManager, UnlockState, PluginLog);
         _emoteExecutor = new EmoteExecutor(DataManager, PluginLog);
@@ -60,10 +67,14 @@ public sealed class EmoteGridPlugin : IDalamudPlugin {
         PluginInterface.UiBuilder.Draw += DrawUI;
         PluginInterface.UiBuilder.OpenConfigUi += DrawConfigUI;
         PluginInterface.UiBuilder.OpenMainUi += DrawMainUI;
+        ClientState.Logout += OnLogout;
     }
 
     // ── Teardown ─────────────────────────────────────────────────────
     public void Dispose() {
+        ClientState.Logout -= OnLogout;
+        CloseAllWindows();
+
         WindowSystem.RemoveAllWindows();
         foreach (var win in _mainWindows) {
             win.Dispose();
@@ -76,6 +87,19 @@ public sealed class EmoteGridPlugin : IDalamudPlugin {
         PluginInterface.UiBuilder.Draw -= DrawUI;
         PluginInterface.UiBuilder.OpenConfigUi -= DrawConfigUI;
         PluginInterface.UiBuilder.OpenMainUi -= DrawMainUI;
+    }
+
+    private void OnLogout(int type, int code) {
+        CloseAllWindows();
+    }
+
+    public void CloseAllWindows() {
+        foreach (var win in _mainWindows) {
+            win.IsOpen = false;
+            win.WindowConfig.IsOpen = false;
+        }
+        _configWindow.IsOpen = false;
+        Config.Save();
     }
 
     // ── Window Management ────────────────────────────────────────────
@@ -253,6 +277,7 @@ public sealed class EmoteGridPlugin : IDalamudPlugin {
                 bool anyOpen = _mainWindows.Any(w => w.IsOpen);
                 foreach (var win in _mainWindows) {
                     win.IsOpen = !anyOpen;
+                    win.WindowConfig.IsOpen = !anyOpen;
                 }
                 Config.Save();
                 break;
@@ -308,6 +333,8 @@ public sealed class EmoteGridPlugin : IDalamudPlugin {
     private void DrawMainUI() {
         if (_mainWindows.Count > 0) {
             _mainWindows[0].IsOpen = true;
+            _mainWindows[0].WindowConfig.IsOpen = true;
+            Config.Save();
         }
     }
 }

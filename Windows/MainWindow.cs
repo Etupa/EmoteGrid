@@ -56,7 +56,7 @@ public class MainWindow : Window, IDisposable {
         _textureProvider = textureProvider;
         _onSave = onSave;
 
-        IsOpen = config.IsOpen;
+        IsOpen = EmoteGridPlugin.ClientState.IsLoggedIn && config.IsOpen;
 
         SizeConstraints = new WindowSizeConstraints {
             MinimumSize = new Vector2(300, 300),
@@ -80,6 +80,10 @@ public class MainWindow : Window, IDisposable {
     public override void OnClose() {
         _config.IsOpen = false;
         _onSave?.Invoke();
+    }
+
+    public override bool DrawConditions() {
+        return EmoteGridPlugin.ClientState.IsLoggedIn;
     }
 
     public override void PreDraw() {

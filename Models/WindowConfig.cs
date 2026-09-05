@@ -20,7 +20,7 @@ public class WindowConfig {
     public bool HideLockedEmotesTab { get; set; } = false;
     public string CustomLockedTabName { get; set; } = "Locked";
     public string? SelectedTab { get; set; } = null;
-    public bool IsOpen { get; set; } = true;
+    public bool IsOpen { get; set; } = false;
 
     // Unified tab rendering order (contains default tab IDs and custom tab names)
     public List<string> TabOrder { get; set; } = new();
